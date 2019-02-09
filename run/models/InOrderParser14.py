@@ -11,7 +11,7 @@ InOrder + inorder-lstm(w/o right_trees) + span encoding=[lstm(l, r); inorder-LST
 '''
 
 
-class InOrderParser9(object):
+class InOrderParser14(object):
     def network_init(self):
         self.tag_embeddings = self.model.add_lookup_parameters(
             (self.tag_count, self.tag_embedding_dim),
@@ -48,14 +48,21 @@ class InOrderParser9(object):
             self.model,
             dy.VanillaLSTMBuilder)
 
+        self.lstm1 = dy.BiRNNBuilder(
+            self.lstm_layers,
+            self.tag_embedding_dim + 2 * self.char_lstm_dim + self.word_embedding_dim,
+            2 * self.lstm_dim,
+            self.model,
+            dy.VanillaLSTMBuilder)
+
         self.inorder_lstm = dy.VanillaLSTMBuilder(
             2, self.label_embedding_dim + 2 * self.lstm_dim, self.lstm_dim, self.model)
 
         self.f_label = Feedforward(
-            self.model, 4 * self.lstm_dim, [self.fc_hidden_dim], self.label_out)
+            self.model, 3 * self.lstm_dim, [self.fc_hidden_dim], self.label_out)
 
         self.f_split = Feedforward(
-            self.model, 4 * self.lstm_dim, [self.fc_hidden_dim], 1)
+            self.model, 3 * self.lstm_dim, [self.fc_hidden_dim], 1)
 
     def __init__(
         self,
@@ -143,6 +150,7 @@ class InOrderParser9(object):
 
     def parse(self, data):
         self.lstm.set_dropout(self.dropout)
+        self.lstm1.set_dropout(self.dropout)
 
         word_indices = data['w']
         tag_indices = data['t']
@@ -152,6 +160,7 @@ class InOrderParser9(object):
         embeddings = self.get_embeddings(
             word_indices, tag_indices, is_train=True)
         lstm_outputs = self.lstm.transduce(embeddings)
+        lstm_outputs1 = self.lstm1.transduce(embeddings)
 
         @functools.lru_cache(maxsize=None)
         def get_span_encoding(left, right):
@@ -164,19 +173,27 @@ class InOrderParser9(object):
             return dy.concatenate([forward, backward])
 
         @functools.lru_cache(maxsize=None)
-        def get_label_scores(left, right, child_state, parent_state):
+        def get_span_encoding1(left, right):
+            forward = (
+                lstm_outputs1[right + 1][:self.lstm_dim] -
+                lstm_outputs1[left][:self.lstm_dim])
+            backward = (
+                lstm_outputs1[left + 1][self.lstm_dim:] -
+                lstm_outputs1[right + 2][self.lstm_dim:])
+            return dy.concatenate([forward, backward])
+
+        @functools.lru_cache(maxsize=None)
+        def get_label_scores(left, right, child_state):
             h_hat = child_state.output()
-            p_hat = parent_state.output()
             span_encoding = dy.concatenate(
-                [get_span_encoding(left, right), h_hat, p_hat])
+                [get_span_encoding(left, right), h_hat])
             label_scores = self.f_label(span_encoding)
 
             return label_scores
 
         @functools.lru_cache(maxsize=None)
-        def predict_label(left, right, child_state, parent_state):
-            label_scores = get_label_scores(
-                left, right, child_state, parent_state)
+        def predict_label(left, right, child_state):
+            label_scores = get_label_scores(left, right, child_state)
 
             oracle_label, crossing = gold_tree.span_labels(left, right)
             oracle_label = oracle_label[::-1]
@@ -185,7 +202,7 @@ class InOrderParser9(object):
             else:
                 oracle_label = 'label-' + '-'.join(oracle_label)
             oracle_label_index = self.vocab.l_action_index(oracle_label)
-            label_scores = InOrderParser9.augment(
+            label_scores = InOrderParser14.augment(
                 label_scores, oracle_label_index, crossing)
 
             label_scores_np = label_scores.npvalue()
@@ -207,7 +224,7 @@ class InOrderParser9(object):
 
             return label, label_loss, argmax_label_index
 
-        def helper(left, split, right_bound, child_state, parent_state, left_trees=None, left_loss=None):
+        def helper(left, split, right_bound, child_state, left_trees=None, left_loss=None):
             '''
             left_span: [left, split]
             right_span:[split+1, <=right_bound]
@@ -215,8 +232,11 @@ class InOrderParser9(object):
             if left == split or left_trees is None or left_loss is None:
                 assert left == split and left_trees is None and left_loss is None
 
+                child_state = child_state.add_input(dy.concatenate(
+                    [embeddings[left], get_span_encoding1(left, split)]))
+
                 left_label, left_loss, argmax_label_index = predict_label(
-                    left, split, child_state, parent_state)
+                    left, split, child_state)
                 left_trees = PhraseTree(leaf=left)
                 if left_label != 'none':
                     for nt in left_label[6:].split('-'):
@@ -224,21 +244,19 @@ class InOrderParser9(object):
                             symbol=nt, children=[left_trees])
                 left_trees = [left_trees]
                 child_state = child_state.add_input(
-                    dy.concatenate([self.label_embeddings[argmax_label_index], get_span_encoding(left, split)]))
-                parent_state = child_state
+                    dy.concatenate([self.label_embeddings[argmax_label_index], get_span_encoding1(left, split)]))
 
             if split == right_bound:
                 return left_trees, left_loss, child_state
 
             h_hat = child_state.output()
-            p_hat = parent_state.output()
             left_encodings = []
             right_encodings = []
             for right in range(split + 1, right_bound + 1):
                 left_encodings.append(dy.concatenate(
-                    [get_span_encoding(left, right), h_hat, p_hat]))
+                    [get_span_encoding(left, right), h_hat]))
                 right_encodings.append(dy.concatenate(
-                    [get_span_encoding(split + 1, right), h_hat, p_hat]))
+                    [get_span_encoding(split + 1, right), h_hat]))
             left_scores = self.f_split(dy.concatenate_to_batch(left_encodings))
             right_scores = self.f_split(
                 dy.concatenate_to_batch(right_encodings))
@@ -249,7 +267,7 @@ class InOrderParser9(object):
             oracle_rights = gold_tree.parent_rights(left, split, right_bound)
             oracle_right = max(oracle_rights)
             oracle_right_index = oracle_right - (split + 1)
-            parent_right_scores = InOrderParser9.augment(
+            parent_right_scores = InOrderParser14.augment(
                 parent_right_scores, oracle_right_index)
 
             parent_right_scores_np = parent_right_scores.npvalue()
@@ -263,13 +281,13 @@ class InOrderParser9(object):
                 if argmax_right != oracle_right else dy.zeros(1))
 
             label, label_loss, argmax_label_index = predict_label(
-                left, right, child_state, parent_state)
+                left, right, child_state)
 
             child_state = child_state.add_input(
-                dy.concatenate([self.label_embeddings[argmax_label_index], get_span_encoding(left, right)]))
+                dy.concatenate([self.label_embeddings[argmax_label_index], get_span_encoding1(left, right)]))
 
             right_trees, right_loss, right_state = helper(
-                split + 1, split + 1, right, child_state, parent_state, None, None)
+                split + 1, split + 1, right, child_state, None, None)
 
             childrens = left_trees + right_trees
 
@@ -279,7 +297,7 @@ class InOrderParser9(object):
                         symbol=nt, children=childrens)]
 
             tree, loss, parent_state = helper(
-                left, right, right_bound, right_state, child_state, childrens, parent_loss + label_loss + left_loss + right_loss)
+                left, right, right_bound, child_state, childrens, parent_loss + label_loss + left_loss + right_loss)
 
             return tree, loss, parent_state
 
@@ -287,7 +305,7 @@ class InOrderParser9(object):
         leaf_state = leaf_state.add_input(
             dy.concatenate([self.label_embeddings[self.label_out], dy.ones(2 * self.lstm_dim)]))
         childrens, loss, _ = helper(
-            0, 0, len(sentence) - 1, leaf_state, leaf_state, None, None)
+            0, 0, len(sentence) - 1, leaf_state, None, None)
         assert len(childrens) == 1
         tree = childrens[0]
         tree.propagate_sentence(sentence)
@@ -296,12 +314,14 @@ class InOrderParser9(object):
 
     def predict(self, gold_tree):
         self.lstm.disable_dropout()
+        self.lstm1.disable_dropout()
 
         sentence = gold_tree.sentence
         w, t = self.vocab.sentence_sequences(sentence)
 
         embeddings = self.get_embeddings(w, t)
         lstm_outputs = self.lstm.transduce(embeddings)
+        lstm_outputs1 = self.lstm1.transduce(embeddings)
 
         @functools.lru_cache(maxsize=None)
         def get_span_encoding(left, right):
@@ -314,29 +334,27 @@ class InOrderParser9(object):
             return dy.concatenate([forward, backward])
 
         @functools.lru_cache(maxsize=None)
-        def get_label_scores(left, right, child_state, parent_state):
+        def get_span_encoding1(left, right):
+            forward = (
+                lstm_outputs1[right + 1][:self.lstm_dim] -
+                lstm_outputs1[left][:self.lstm_dim])
+            backward = (
+                lstm_outputs1[left + 1][self.lstm_dim:] -
+                lstm_outputs1[right + 2][self.lstm_dim:])
+            return dy.concatenate([forward, backward])
+
+        @functools.lru_cache(maxsize=None)
+        def get_label_scores(left, right, child_state):
             h_hat = child_state.output()
-            p_hat = parent_state.output()
             span_encoding = dy.concatenate(
-                [get_span_encoding(left, right), h_hat, p_hat])
+                [get_span_encoding(left, right), h_hat])
             label_scores = self.f_label(span_encoding)
 
             return label_scores
 
         @functools.lru_cache(maxsize=None)
-        def predict_label(left, right, child_state, parent_state):
-            label_scores = get_label_scores(
-                left, right, child_state, parent_state)
-
-            oracle_label, crossing = gold_tree.span_labels(left, right)
-            oracle_label = oracle_label[::-1]
-            if len(oracle_label) == 0:
-                oracle_label = 'none'
-            else:
-                oracle_label = 'label-' + '-'.join(oracle_label)
-            oracle_label_index = self.vocab.l_action_index(oracle_label)
-            label_scores = InOrderParser9.augment(
-                label_scores, oracle_label_index, crossing)
+        def predict_label(left, right, child_state):
+            label_scores = get_label_scores(left, right, child_state)
 
             label_scores_np = label_scores.npvalue()
             argmax_label_index = int(
@@ -350,14 +368,11 @@ class InOrderParser9(object):
                     self.vocab.i2l[argmax_label_index - 1]
 
             label = argmax_label
-            label_loss = (
-                label_scores[argmax_label_index] -
-                label_scores[oracle_label_index]
-                if argmax_label != oracle_label else dy.zeros(1))
+            label_loss = label_scores[argmax_label_index]
 
             return label, label_loss, argmax_label_index
 
-        def helper(left, split, right_bound, child_state, parent_state, left_trees=None, left_loss=None):
+        def helper(left, split, right_bound, child_state, left_trees=None, left_loss=None):
             '''
             left_span: [left, split]
             right_span:[split+1, <=right_bound]
@@ -365,8 +380,11 @@ class InOrderParser9(object):
             if left == split or left_trees is None or left_loss is None:
                 assert left == split and left_trees is None and left_loss is None
 
+                child_state = child_state.add_input(dy.concatenate(
+                    [embeddings[left], get_span_encoding1(left, split)]))
+
                 left_label, left_loss, argmax_label_index = predict_label(
-                    left, split, child_state, parent_state)
+                    left, split, child_state)
                 left_trees = PhraseTree(leaf=left)
                 if left_label != 'none':
                     for nt in left_label[6:].split('-'):
@@ -374,21 +392,19 @@ class InOrderParser9(object):
                             symbol=nt, children=[left_trees])
                 left_trees = [left_trees]
                 child_state = child_state.add_input(
-                    dy.concatenate([self.label_embeddings[argmax_label_index], get_span_encoding(left, split)]))
-                parent_state = child_state
+                    dy.concatenate([self.label_embeddings[argmax_label_index], get_span_encoding1(left, split)]))
 
             if split == right_bound:
                 return left_trees, left_loss, child_state
 
             h_hat = child_state.output()
-            p_hat = parent_state.output()
             left_encodings = []
             right_encodings = []
             for right in range(split + 1, right_bound + 1):
                 left_encodings.append(dy.concatenate(
-                    [get_span_encoding(left, right), h_hat, p_hat]))
+                    [get_span_encoding(left, right), h_hat]))
                 right_encodings.append(dy.concatenate(
-                    [get_span_encoding(split + 1, right), h_hat, p_hat]))
+                    [get_span_encoding(split + 1, right), h_hat]))
             left_scores = self.f_split(dy.concatenate_to_batch(left_encodings))
             right_scores = self.f_split(
                 dy.concatenate_to_batch(right_encodings))
@@ -404,13 +420,13 @@ class InOrderParser9(object):
             parent_loss = parent_right_scores[argmax_right_index]
 
             label, label_loss, argmax_label_index = predict_label(
-                left, right, child_state, parent_state)
+                left, right, child_state)
 
             child_state = child_state.add_input(
-                dy.concatenate([self.label_embeddings[argmax_label_index], get_span_encoding(left, right)]))
+                dy.concatenate([self.label_embeddings[argmax_label_index], get_span_encoding1(left, right)]))
 
             right_trees, right_loss, right_state = helper(
-                split + 1, split + 1, right, child_state, parent_state, None, None)
+                split + 1, split + 1, right, child_state, None, None)
 
             childrens = left_trees + right_trees
 
@@ -420,7 +436,7 @@ class InOrderParser9(object):
                         symbol=nt, children=childrens)]
 
             tree, loss, parent_state = helper(
-                left, right, right_bound, right_state, child_state, childrens, parent_loss + label_loss + left_loss + right_loss)
+                left, right, right_bound, child_state, childrens, parent_loss + label_loss + left_loss + right_loss)
 
             return tree, loss, parent_state
 
@@ -428,7 +444,7 @@ class InOrderParser9(object):
         leaf_state = leaf_state.add_input(
             dy.concatenate([self.label_embeddings[self.label_out], dy.ones(2 * self.lstm_dim)]))
         childrens, loss, _ = helper(
-            0, 0, len(sentence) - 1, leaf_state, leaf_state, None, None)
+            0, 0, len(sentence) - 1, leaf_state, None, None)
         assert len(childrens) == 1
         tree = childrens[0]
         tree.propagate_sentence(sentence)

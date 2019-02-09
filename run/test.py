@@ -5,6 +5,8 @@ sys.setrecursionlimit(10000)
 import random
 random.seed(666)
 
+import numpy as np
+np.random.seed(666)
 import _dynet as dy
 
 import models
@@ -33,12 +35,11 @@ if __name__ == '__main__':
     config = Configurable(args.config_file, extra_args)
 
     dyparams = dy.DynetParams()
-    dyparams.set_autobatch(config.dynet_autobatch)
-    dyparams.set_random_seed(config.dynet_seed)
-    dyparams.set_mem(config.dynet_mem)
+    # dyparams.from_args()
+    dyparams.set_autobatch(True)
+    dyparams.set_random_seed(666)
+    dyparams.set_mem(2000)
     dyparams.init()
-
-    np.random.seed(config.numpy_seed)
 
     testing_trees = PhraseTree.load_treefile(config.test_file)
     print("Loaded testing trees from {}".format(config.test_file))

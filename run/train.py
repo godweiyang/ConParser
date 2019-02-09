@@ -38,9 +38,9 @@ if __name__ == "__main__":
     print('Loaded {} validation trees!'.format(len(deving_trees)))
 
     model = dy.ParameterCollection()
-    trainer = dy.AdadeltaTrainer(model, eps=1e-8, rho=0.99)
+    trainer = dy.AdadeltaTrainer(model, eps=1e-7, rho=0.99)
     # trainer = dy.AdamTrainer(model)
-    trainer.set_sparse_updates(False)
+    # trainer.set_sparse_updates(False)
 
     Parser = getattr(models, args.model)
     parser = Parser(
@@ -115,7 +115,7 @@ if __name__ == "__main__":
                 current_processed -= check_every
                 dev_fscore = test(parser, deving_trees, config.evalb_dir)
                 print("[Dev: {}]".format(dev_fscore))
-                if dev_fscore.fscore > best_dev_fscore.fscore:
+                if dev_fscore.fscore >= best_dev_fscore.fscore:
                     if best_dev_model_path is not None:
                         for ext in [".data", ".meta"]:
                             path = best_dev_model_path + ext
