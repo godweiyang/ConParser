@@ -10,7 +10,7 @@ from models import *
 
 class ChartParser(BaseParser):
     '''
-    chart parser from stern 2017.
+        chart parser from stern 2017.
     '''
 
     def __init__(self, model, parameters):

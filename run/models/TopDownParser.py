@@ -10,9 +10,9 @@ from models import *
 
 class TopDownParser(BaseParser):
     '''
-    TopDown greedy parser from stern 2017.
-    label prediction: lstm(l, r)
-    split prediction: lstm(l, r)
+        TopDown greedy parser from stern 2017.
+        label prediction: lstm(l, r)
+        split prediction: lstm(l, r)
     '''
 
     def __init__(self, model, parameters):

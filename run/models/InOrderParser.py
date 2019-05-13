@@ -10,9 +10,9 @@ from models import *
 
 class InOrderParser(BaseParser):
     '''
-    InOrder greedy parser
-    label prediction: lstm(l, r)
-    right boundary point prediction: lstm(l, r)
+        InOrder greedy parser
+        label prediction: lstm(l, r)
+        right boundary point prediction: lstm(l, r)
     '''
 
     def __init__(self, model, parameters):
@@ -118,12 +118,12 @@ class InOrderParser(BaseParser):
 
 class InOrderParser1(BaseParser):
     '''
-    InOrder greedy parser
-    historical_info_lstm:
-        - without branch
-        - input = label_embedding
-    label prediction: [lstm(l, r); historical_info_lstm(t)]
-    right boundary point prediction: lstm(l, r)
+        InOrder greedy parser
+        historical_info_lstm:
+            - without branch
+            - input = label_embedding
+        label prediction: [lstm(l, r); historical_info_lstm(t)]
+        right boundary point prediction: lstm(l, r)
     '''
 
     def __init__(self, model, parameters):
@@ -244,12 +244,12 @@ class InOrderParser1(BaseParser):
 
 class InOrderParser2(BaseParser):
     '''
-    InOrder greedy parser
-    historical_info_lstm:
-        - with branch
-        - input = label_embedding
-    label prediction: [lstm(l, r); historical_info_lstm(t)]
-    right boundary point prediction: lstm(l, r)
+        InOrder greedy parser
+        historical_info_lstm:
+            - with branch
+            - input = label_embedding
+        label prediction: [lstm(l, r); historical_info_lstm(t)]
+        right boundary point prediction: lstm(l, r)
     '''
 
     def __init__(self, model, parameters):
@@ -370,12 +370,12 @@ class InOrderParser2(BaseParser):
 
 class InOrderParser3(BaseParser):
     '''
-    InOrder greedy parser
-    historical_info_lstm:
-        - with branch
-        - input = [label_embedding; lstm(l, r)]
-    label prediction: [lstm(l, r); historical_info_lstm(t)]
-    right boundary point prediction: lstm(l, r)
+        InOrder greedy parser
+        historical_info_lstm:
+            - with branch
+            - input = [label_embedding; lstm(l, r)]
+        label prediction: [lstm(l, r); historical_info_lstm(t)]
+        right boundary point prediction: lstm(l, r)
     '''
 
     def __init__(self, model, parameters):
@@ -499,12 +499,12 @@ class InOrderParser3(BaseParser):
 
 class InOrderParser4(BaseParser):
     '''
-    InOrder greedy parser
-    historical_info_lstm:
-        - with branch
-        - input = lstm(l, r)
-    label prediction: [lstm(l, r); historical_info_lstm(t)]
-    right boundary point prediction: lstm(l, r)
+        InOrder greedy parser
+        historical_info_lstm:
+            - with branch
+            - input = lstm(l, r)
+        label prediction: [lstm(l, r); historical_info_lstm(t)]
+        right boundary point prediction: lstm(l, r)
     '''
 
     def __init__(self, model, parameters):
@@ -627,12 +627,12 @@ class InOrderParser4(BaseParser):
 
 class InOrderParser5(BaseParser):
     '''
-    InOrder greedy parser
-    historical_info_lstm:
-        - with branch
-        - input = [label_embedding; lstm1(l, r)]
-    label prediction: [lstm(l, r); historical_info_lstm(t)]
-    right boundary point prediction: lstm(l, r)
+        InOrder greedy parser
+        historical_info_lstm:
+            - with branch
+            - input = [label_embedding; lstm1(l, r)]
+        label prediction: [lstm(l, r); historical_info_lstm(t)]
+        right boundary point prediction: lstm(l, r)
     '''
 
     def __init__(self, model, parameters):
@@ -766,12 +766,12 @@ class InOrderParser5(BaseParser):
 
 class InOrderParser6(BaseParser):
     '''
-    InOrder greedy parser
-    historical_info_lstm:
-        - with branch
-        - input = lstm1(l, r)
-    label prediction: [lstm(l, r); historical_info_lstm(t)]
-    right boundary point prediction: lstm(l, r)
+        InOrder greedy parser
+        historical_info_lstm:
+            - with branch
+            - input = lstm1(l, r)
+        label prediction: [lstm(l, r); historical_info_lstm(t)]
+        right boundary point prediction: lstm(l, r)
     '''
 
     def __init__(self, model, parameters):
@@ -904,12 +904,12 @@ class InOrderParser6(BaseParser):
 
 class InOrderParser7(BaseParser):
     '''
-    InOrder greedy parser
-    historical_info_lstm:
-        - with branch
-        - input = label_embedding
-    label prediction: [lstm(l, r); historical_info_lstm(t)]
-    right boundary point prediction: [lstm(l, r); historical_info_lstm(t)]
+        InOrder greedy parser
+        historical_info_lstm:
+            - with branch
+            - input = label_embedding
+        label prediction: [lstm(l, r); historical_info_lstm(t)]
+        right boundary point prediction: [lstm(l, r); historical_info_lstm(t)]
     '''
 
     def __init__(self, model, parameters):
@@ -1050,12 +1050,12 @@ class InOrderParser7(BaseParser):
 
 class InOrderParser8(BaseParser):
     '''
-    InOrder greedy parser
-    historical_info_lstm:
-        - with branch
-        - input = [label_embedding; lstm(l, r)]
-    label prediction: [lstm(l, r); historical_info_lstm(t)]
-    right boundary point prediction: [lstm(l, r); historical_info_lstm(t)]
+        InOrder greedy parser
+        historical_info_lstm:
+            - with branch
+            - input = [label_embedding; lstm(l, r)]
+        label prediction: [lstm(l, r); historical_info_lstm(t)]
+        right boundary point prediction: [lstm(l, r); historical_info_lstm(t)]
     '''
 
     def __init__(self, model, parameters):
