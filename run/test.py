@@ -13,36 +13,38 @@ import models
 from lib import *
 
 
-def test(parser, test_trees, evalb_dir):
+def test(parser, testing_data, evalb_dir, unsupervised=False):
     test_predicted = []
-    for tree in test_trees:
+    for data in testing_data:
         dy.renew_cg()
-        predicted = parser.predict(tree)
+        predicted = parser.parse(data, False)
         test_predicted.append(predicted)
 
-    test_fscore = evaluate.evalb(evalb_dir, test_trees, test_predicted)
+    if unsupervised:
+        test_fscore = evaluate.evalb_US(testing_data, test_predicted)
+    else:
+        test_fscore = evaluate.evalb(evalb_dir, testing_data, test_predicted)
+
     return test_fscore
 
 
 if __name__ == '__main__':
     argparser = argparse.ArgumentParser()
     argparser.add_argument(
-        '--config_file', default='configs/ShiftReduceParser.cfg')
-    argparser.add_argument('--model', default='ShiftReduceParser')
+        '--config_file', default='configs/InOrderParser.cfg')
+    argparser.add_argument('--model', default='InOrderParser')
     argparser.add_argument('--dev_fscore', required=True)
+    argparser.add_argument('--unsupervised', action="store_true")
     args, extra_args = argparser.parse_known_args()
     args.config_file = "configs/{}.cfg".format(args.model)
     config = Configurable(args.config_file, extra_args)
 
     dyparams = dy.DynetParams()
     # dyparams.from_args()
-    dyparams.set_autobatch(True)
+    # dyparams.set_autobatch(True)
     dyparams.set_random_seed(666)
     dyparams.set_mem(2000)
     dyparams.init()
-
-    testing_trees = PhraseTree.load_treefile(config.test_file)
-    print("Loaded testing trees from {}".format(config.test_file))
 
     model = dy.ParameterCollection()
     model_path = config.load_model_path + \
@@ -51,9 +53,12 @@ if __name__ == '__main__':
     [parser] = dy.load(model_path, model)
     print("Loaded model from {}".format(model_path))
 
-    start_time = time.time()
-    test_fscore = test(parser, testing_trees, config.evalb_dir)
+    testing_data = parser.vocab.gold_data_from_file(config.test_file)
+    print("Loaded testing data from {}".format(config.test_file))
 
+    start_time = time.time()
+    test_fscore = test(parser, testing_data,
+                       config.evalb_dir, args.unsupervised)
     print(
         "test-fscore {} "
         "test-elapsed {}".format(

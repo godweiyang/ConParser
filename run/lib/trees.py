@@ -106,8 +106,11 @@ class PhraseTree(object):
     def load_treefile(fname):
         trees = []
         for line in open(fname):
-            t = PhraseTree.parse(line)
-            trees.append(t)
+            try:
+                t = PhraseTree.parse(line)
+                trees.append(t)
+            except:
+                print(line)
         return trees
 
     def enclosing(self, left, right, equal=True):

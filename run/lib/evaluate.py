@@ -16,12 +16,47 @@ class FScore(object):
             self.recall, self.precision, self.fscore)
 
 
-def evalb(evalb_dir, gold_trees, predicted_trees):
+def evalb_US(gold_data, predicted_graphs):
+    gold_trees = [data['tree'] for data in gold_data]
+    assert len(gold_trees) == len(predicted_graphs)
+
+    predicted_right_count = 0
+    gold_span_count = 0
+    predicted_span_count = 0
+    for gold_tree, predicted_graph in zip(gold_trees, predicted_graphs):
+        assert len(gold_tree.sentence) == len(predicted_graph[0])
+        length = len(gold_tree.sentence)
+        for left in range(length):
+            for right in range(left, length):
+                if left == right:
+                    predicted_right_count += 1
+                    gold_span_count += 1
+                    predicted_span_count += 1
+                else:
+                    label, crossing = gold_tree.span_labels(left, right)
+                    label = label[::-1]
+                    if (len(label) > 0):
+                        gold_span_count += 1
+                        if predicted_graph[left][right] > 0.8:
+                            predicted_right_count += 1
+                    if predicted_graph[left][right] > 0.8:
+                        predicted_span_count += 1
+
+    recall = float(100.0 * predicted_right_count / gold_span_count)
+    precision = float(100.0 * predicted_right_count / predicted_span_count)
+    fscore = float(2.0 * recall * precision / (recall + precision))
+
+    return FScore(recall, precision, fscore)
+
+
+def evalb(evalb_dir, gold_data, predicted_trees):
     assert os.path.exists(evalb_dir)
     evalb_program_path = os.path.join(evalb_dir, "evalb")
     evalb_param_path = os.path.join(evalb_dir, "COLLINS.prm")
     assert os.path.exists(evalb_program_path)
     assert os.path.exists(evalb_param_path)
+
+    gold_trees = [data['tree'] for data in gold_data]
 
     assert len(gold_trees) == len(predicted_trees)
 

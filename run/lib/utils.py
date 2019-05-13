@@ -1,7 +1,7 @@
 import time
 
-import _dynet as dy
 import numpy as np
+import _dynet as dy
 
 
 class Feedforward(object):

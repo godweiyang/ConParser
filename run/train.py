@@ -27,38 +27,51 @@ if __name__ == "__main__":
     argparser.add_argument(
         '--config_file', default='configs/InOrderParser.cfg')
     argparser.add_argument('--model', default='InOrderParser')
+    argparser.add_argument('--unsupervised', action="store_true")
+    argparser.add_argument('--train_more', action="store_true")
+    argparser.add_argument('--more_epochs', type=int, default=20)
     args, extra_args = argparser.parse_known_args()
-    args.config_file = "configs/{}.cfg".format(args.model)
+    args.config_file = "configs/{}.cfg".format(
+        args.model[:args.model.find('Parser') + 6])
     config = Configurable(args.config_file, extra_args)
 
     vocab = Vocabulary(config.train_file)
     training_data = vocab.gold_data_from_file(config.train_file)
-    print('Loaded {} training sentences!'.format(len(training_data)))
-    deving_trees = PhraseTree.load_treefile(config.dev_file)
-    print('Loaded {} validation trees!'.format(len(deving_trees)))
+    print('Loaded {} training data!'.format(len(training_data)))
+    deving_data = vocab.gold_data_from_file(config.dev_file)
+    print('Loaded {} validation data!'.format(len(deving_data)))
 
     model = dy.ParameterCollection()
     trainer = dy.AdadeltaTrainer(model, eps=1e-7, rho=0.99)
     # trainer = dy.AdamTrainer(model)
     # trainer.set_sparse_updates(False)
 
-    Parser = getattr(models, args.model)
-    parser = Parser(
-        model,
-        vocab,
-        config.word_embedding_dim,
-        config.tag_embedding_dim,
-        config.char_embedding_dim,
-        config.label_embedding_dim,
-        config.pos_embedding_dim,
-        config.char_lstm_layers,
-        config.char_lstm_dim,
-        config.lstm_layers,
-        config.lstm_dim,
-        config.fc_hidden_dim,
-        config.dropout,
-        config.unk_param,
-    )
+    if args.train_more:
+        model_path = config.load_model_path + \
+            args.model + "_{}epoch".format(config.epochs)
+        [parser] = dy.load(model_path, model)
+        print("Loaded model from {}".format(model_path))
+    else:
+        parameters = [
+            vocab,
+            config.word_embedding_dim,
+            config.tag_embedding_dim,
+            config.char_embedding_dim,
+            config.label_embedding_dim,
+            config.pos_embedding_dim,
+            config.char_lstm_layers,
+            config.char_lstm_dim,
+            config.lstm_layers,
+            config.lstm_dim,
+            config.fc_hidden_dim,
+            config.dropout,
+            config.unk_param
+        ]
+        Parser = getattr(models, args.model)
+        parser = Parser(
+            model,
+            parameters
+        )
 
     current_processed = 0
     check_every = len(training_data) / config.checks_per_epoch
@@ -68,12 +81,19 @@ if __name__ == "__main__":
 
     start_time = time.time()
 
-    for epoch in itertools.count(start=1):
-        if config.epochs is not None and epoch > config.epochs:
+    if args.train_more:
+        start_epoch = config.epochs + 1
+        end_epoch = config.epochs + args.more_epochs
+    else:
+        start_epoch = 1
+        end_epoch = config.epochs
+
+    for epoch in itertools.count(start=start_epoch):
+        if config.epochs is not None and epoch > end_epoch:
             model_path_finished = "{}{}_{}epoch".format(
-                config.save_model_path, args.model, config.epochs)
+                config.save_model_path, args.model, end_epoch)
             print("    [Saving {} epochs model to {}]".format(
-                config.epochs, model_path_finished))
+                end_epoch, model_path_finished))
             dy.save(model_path_finished, [parser])
             break
 
@@ -87,7 +107,7 @@ if __name__ == "__main__":
             dy.renew_cg()
 
             for data in training_data[start_index:start_index + config.batch_size]:
-                loss, _, loss_counts = parser.parse(data)
+                loss, _, loss_counts = parser.parse(data, True)
                 batch_losses.append(loss)
                 current_processed += 1
                 total_loss_count += loss_counts
@@ -113,7 +133,8 @@ if __name__ == "__main__":
 
             if current_processed >= check_every:
                 current_processed -= check_every
-                dev_fscore = test(parser, deving_trees, config.evalb_dir)
+                dev_fscore = test(parser, deving_data,
+                                  config.evalb_dir, args.unsupervised)
                 print("[Dev: {}]".format(dev_fscore))
                 if dev_fscore.fscore >= best_dev_fscore.fscore:
                     if best_dev_model_path is not None:

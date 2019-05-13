@@ -58,9 +58,9 @@
 /******************/
 
 #define MAX_SENT_LEN           5000
-#define MAX_WORD_IN_SENT        200
-#define MAX_BRACKET_IN_SENT     200
-#define MAX_WORD_LEN            100
+#define MAX_WORD_IN_SENT        500
+#define MAX_BRACKET_IN_SENT     500
+#define MAX_WORD_LEN            500
 #define MAX_LABEL_LEN            30
 #define MAX_QUOTE_TERM           20
 
@@ -68,7 +68,7 @@
 #define MAX_EQ_LABEL            100
 #define MAX_EQ_WORD             100
 
-#define MAX_LINE_LEN            500
+#define MAX_LINE_LEN            5000
 
 #define DEFAULT_MAX_ERROR        10
 #define DEFAULT_CUT_LEN          40

@@ -122,16 +122,3 @@ class Configurable(object):
     @property
     def checks_per_epoch(self):
         return self._config.getint('Run', 'checks_per_epoch')
-
-    # Dynet
-    @property
-    def dynet_autobatch(self):
-        return self._config.getboolean('Dynet', 'dynet_autobatch')
-
-    @property
-    def dynet_mem(self):
-        return self._config.getint('Dynet', 'dynet_mem')
-
-    @property
-    def dynet_seed(self):
-        return self._config.getint('Dynet', 'dynet_seed')
