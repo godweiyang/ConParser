@@ -212,32 +212,10 @@ class GNNParser2(BaseParser):
             (2 * self.lstm_dim, 2 * self.lstm_dim))
         self.B = self.model.add_parameters(
             (2 * self.lstm_dim, 2 * self.lstm_dim))
-
-    def get_span_encoding(self, H, l, r):
-        return H[l] + H[r + 1]
-
-    def get_label_loss(self, H, gold_tree):
-        if len(gold_tree.children) == 1:
-            return self.get_label_loss(H, gold_tree.children[0])
-        losses = []
-        l = gold_tree.left_span()
-        r = gold_tree.right_span()
-        label_scores = self.f_label(self.get_span_encoding(H, l, r))
-        _, oracle_label_index, _ = self.get_oracle_label(gold_tree, l, r)
-        losses.append(dy.pickneglogsoftmax(label_scores, oracle_label_index))
-
-        if l == r:
-            return losses
-
-        for c in gold_tree.children[1:-1]:
-            cl = c.left_span()
-            label_scores = self.f_label(
-                self.get_span_encoding(H, cl, r))
-            losses.append(dy.pickneglogsoftmax(label_scores, 0))
-        for c in gold_tree.children:
-            losses += self.get_label_loss(H, c)
-
-        return losses
+        self.W_l = self.model.add_parameters(
+            (2 * self.lstm_dim, 2 * self.lstm_dim))
+        self.W_r = self.model.add_parameters(
+            (2 * self.lstm_dim, 2 * self.lstm_dim))
 
     def eisner_parser(self, n, scores):
 
@@ -347,16 +325,38 @@ class GNNParser2(BaseParser):
         _backtrack(0, (n - 1), 1, 0)
         return heads
 
+    def get_span_encoding(self, H, l, r):
+        # return self.W_l * H[l] + self.W_r * H[r + 1]
+        return H[l] + H[r + 1]
+
+    def get_label_loss(self, H, gold_tree, heads, l, r):
+        label_scores = self.f_label(
+            self.get_span_encoding(H, l, r - 1))
+        _, oracle_label_index, _ = self.get_oracle_label(gold_tree, l, r - 1)
+        losses = []
+        losses.append(dy.pickneglogsoftmax(label_scores, oracle_label_index))
+        if l + 1 == r:
+            return losses
+        for k in range(r - 1, l, -1):
+            # if heads[k] == l:
+            if heads[k] <= l:
+                losses += self.get_label_loss(H, gold_tree, heads, l, k)
+                losses += self.get_label_loss(H, gold_tree, heads, k, r)
+                break
+        return losses
+
     def gen_tree_by_heads(self, H, gold_tree, heads, l, r):
         label_scores = self.f_label(
             self.get_span_encoding(H, l, r - 1))
         argmax_label, _ = self.predict_label(
             label_scores, gold_tree, l, r - 1)
+        # argmax_label, _, _ = self.get_oracle_label(gold_tree, l, r - 1)
         if l + 1 == r:
             tree = self.gen_leaf_tree(l, argmax_label)
             return [tree]
         for k in range(r - 1, l, -1):
-            if heads[k] == l:
+            # if heads[k] == l:
+            if heads[k] <= l:
                 left_tree = self.gen_tree_by_heads(
                     H, gold_tree, heads, l, k)
                 right_tree = self.gen_tree_by_heads(
@@ -422,27 +422,37 @@ class GNNParser2(BaseParser):
         # print(Att[0].dim()[0][0], len(heads))
         assert Att2[0].dim()[0][0] == len(heads)
 
-        # childrens, loss = helper(0, 0, len(sentence) - 1, None, None)
-        # assert len(childrens) == 1
-        # tree = childrens[0]
-        # tree.propagate_sentence(sentence)
+        # heads_predicted = self.eisner_parser(len(sentence) + 1, Att2.value())
+
+        # heads_predicted = [Att2.value()[i].argmax()
+        #                    for i in range(len(sentence) + 1)]
+        # heads_predicted[0] = -1
+
+        # heads_predicted = heads
+        # self.check(heads_predicted)
 
         if is_train:
             losses = []
-            losses1 = []
+            # losses1 = []
             for i in range(1, len(heads)):
                 losses.append(-dy.log(Att2[i][heads[i]]))
-                losses1.append(-dy.log(Att1[i][heads[i]]))
+                # losses1.append(-dy.log(Att1[i][heads[i]]))
 
-            losses += self.get_label_loss(H1, gold_tree)
-            loss = dy.esum(losses) + 0.5 * dy.esum(losses1)
-            # loss = dy.esum(losses)
+            # losses += self.get_label_loss_by_tree(H1, gold_tree)
+            losses += self.get_label_loss(H1,
+                                          gold_tree, heads, 0, len(sentence))
+            # losses += self.get_label_loss(H1, gold_tree,
+            #                               heads_predicted, 0, len(sentence))
+
+            # loss = dy.esum(losses) + 0.5 * dy.esum(losses1)
+            loss = dy.esum(losses)
 
             return loss, None, 1
         else:
             heads_predicted = self.eisner_parser(
                 len(sentence) + 1, Att2.value())
             self.check(heads_predicted)
+
             childrens = self.gen_tree_by_heads(
                 H1, gold_tree, heads_predicted, 0, len(sentence))
             tree = childrens[0]
