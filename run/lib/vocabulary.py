@@ -153,6 +153,24 @@ class Vocabulary(object):
 
         return words_indices, tags_indices
 
+    def get_heads(self, tree, is_right_tree=False):
+        if len(tree.children) == 1:
+            self.get_heads(tree.children[0], is_right_tree)
+            return
+
+        l = tree.left_span()
+        r = tree.right_span()
+        if not is_right_tree:
+            self.heads[r + 1] = l
+
+        if l == r:
+            return
+
+        for c in tree.children[:-1]:
+            self.get_heads(c, False)
+
+        self.get_heads(tree.children[-1], True)
+
     def gold_data(self, goldtree):
         w, t = self.sentence_sequences(goldtree.sentence)
 
@@ -166,12 +184,18 @@ class Vocabulary(object):
         for (features, action) in l_features:
             label_data[features] = self.l_action_index(action)
 
+        self.heads = [None] * (len(goldtree.sentence) + 1)
+        self.heads[0] = -1
+
+        self.get_heads(goldtree)
+
         return {
             'tree': goldtree,
             'w': w,
             't': t,
             'struct_data': struct_data,
             'label_data': label_data,
+            'heads': self.heads,
         }
 
     def gold_data_from_file(self, fname):

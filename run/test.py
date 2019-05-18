@@ -21,11 +21,15 @@ def test(parser, testing_data, evalb_dir, unsupervised=False):
         test_predicted.append(predicted)
 
     if unsupervised:
-        test_fscore = evaluate.evalb_US(testing_data, test_predicted)
+        test_predicted_errs = [x[0] for x in test_predicted]
+        test_predicted_span_sets = [x[1] for x in test_predicted]
+        test_fscore = evaluate.evalb_US(testing_data, test_predicted_span_sets)
+        test_ppl = evaluate.evalb_ppl(testing_data, test_predicted_errs)
+        return test_fscore, test_ppl
     else:
         test_fscore = evaluate.evalb(evalb_dir, testing_data, test_predicted)
-
-    return test_fscore
+        # test_fscore = evaluate.evalb_tag(testing_data, test_predicted)
+        return test_fscore
 
 
 if __name__ == '__main__':
@@ -36,14 +40,15 @@ if __name__ == '__main__':
     argparser.add_argument('--dev_fscore', required=True)
     argparser.add_argument('--unsupervised', action="store_true")
     args, extra_args = argparser.parse_known_args()
-    args.config_file = "configs/{}.cfg".format(args.model)
+    args.config_file = "configs/{}.cfg".format(
+        args.model[:args.model.find('Parser') + 6])
     config = Configurable(args.config_file, extra_args)
 
     dyparams = dy.DynetParams()
     # dyparams.from_args()
     # dyparams.set_autobatch(True)
     dyparams.set_random_seed(666)
-    dyparams.set_mem(2000)
+    dyparams.set_mem(10240)
     dyparams.init()
 
     model = dy.ParameterCollection()

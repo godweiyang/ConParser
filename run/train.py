@@ -14,7 +14,7 @@ dyparams = dy.DynetParams()
 # dyparams.from_args()
 dyparams.set_autobatch(True)
 dyparams.set_random_seed(666)
-dyparams.set_mem(2000)
+dyparams.set_mem(10240)
 dyparams.init()
 
 import models
@@ -42,8 +42,8 @@ if __name__ == "__main__":
     print('Loaded {} validation data!'.format(len(deving_data)))
 
     model = dy.ParameterCollection()
-    trainer = dy.AdadeltaTrainer(model, eps=1e-7, rho=0.99)
-    # trainer = dy.AdamTrainer(model)
+    # trainer = dy.AdadeltaTrainer(model, eps=1e-7, rho=0.99)
+    trainer = dy.AdamTrainer(model)
     # trainer.set_sparse_updates(False)
 
     if args.train_more:

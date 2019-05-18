@@ -4,6 +4,8 @@ import re
 import subprocess
 import tempfile
 
+import numpy as np
+
 
 class FScore(object):
     def __init__(self, recall, precision, fscore):
@@ -110,3 +112,37 @@ def evalb(evalb_dir, gold_data, predicted_trees):
         print("Output path: {}".format(output_path))
 
     return fscore
+
+
+def evalb_tag(gold_data, predicted_tags):
+    gold_tags = [data['t'][1:-1] for data in gold_data]
+    assert len(gold_tags) == len(predicted_tags)
+
+    predicted_right_count = 0
+    gold_tag_count = 0
+    predicted_tag_count = 0
+    for gold_tag, predicted_tag in zip(gold_tags, predicted_tags):
+        assert len(gold_tag) == len(predicted_tag)
+        for i in range(len(gold_tag)):
+            if gold_tag[i] == predicted_tag[i]:
+                predicted_right_count += 1
+            gold_tag_count += 1
+            predicted_tag_count += 1
+
+    recall = float(100.0 * predicted_right_count / gold_tag_count)
+    precision = float(100.0 * predicted_right_count / predicted_tag_count)
+    fscore = float(2.0 * recall * precision / (recall + precision))
+
+    return FScore(recall, precision, fscore)
+
+
+def evalb_ppl(gold_data, neg_log_probs):
+    total_length = 0
+    for data in gold_data:
+        total_length += len(data['w']) - 2
+
+    sum_neg_log_probs = np.sum(neg_log_probs)
+
+    ppl = np.exp(sum_neg_log_probs / total_length)
+
+    return ppl

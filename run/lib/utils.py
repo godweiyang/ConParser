@@ -4,6 +4,10 @@ import numpy as np
 import _dynet as dy
 
 
+def leaky_relu(x):
+    return dy.bmax(.1 * x, x)
+
+
 class Feedforward(object):
     def __init__(self, model, input_dim, hidden_dims, output_dim):
         self.spec = locals()

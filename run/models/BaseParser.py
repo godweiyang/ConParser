@@ -318,3 +318,13 @@ class BaseParser(object):
         split_scores = left_scores + right_scores
         split_scores = dy.reshape(split_scores, (len(left_encodings),))
         return split_scores
+
+    def gen_tree_syn_dis(self, syntactic_distance, l, r):
+        span_set = [(l, r)]
+        if l == r:
+            return span_set
+        k = syntactic_distance[l:r].index(max(syntactic_distance[l:r])) + l
+        span_set_left = self.gen_tree_syn_dis(syntactic_distance, l, k)
+        span_set_right = self.gen_tree_syn_dis(syntactic_distance, k + 1, r)
+        span_set += span_set_left + span_set_right
+        return span_set

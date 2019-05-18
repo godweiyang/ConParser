@@ -17,98 +17,47 @@ class UnsupervisedParser(BaseParser):
         super().__init__(model, *parameters)
         self.spec = {'parameters': parameters}
 
+        self.uni_lstm = dy.VanillaLSTMBuilder(
+            2, self.word_embedding_dim, self.lstm_dim, self.model)
+        self.W = self.model.add_parameters(
+            (self.word_count, self.lstm_dim))
+        self.b = self.model.add_parameters((self.word_count, ))
+        self.f_syn_dis = Feedforward(
+            self.model, self.lstm_dim, [self.fc_hidden_dim], 1)
+
     def parse(self, data, is_train=False):
         if is_train:
-            self.lstm.set_dropout(self.dropout)
+            self.uni_lstm.set_dropout(self.dropout)
         else:
-            self.lstm.disable_dropout()
+            self.uni_lstm.disable_dropout()
 
         word_indices = data['w']
-        tag_indices = data['t']
-        gold_tree = data['tree']
-        sentence = gold_tree.sentence
+        # tag_indices = data['t']
+        # gold_tree = data['tree']
+        # sentence = gold_tree.sentence
 
-        embeddings = self.get_embeddings(word_indices, tag_indices, is_train)
-        lstm_outputs = self.lstm.transduce(embeddings)
+        # embeddings = self.get_embeddings(word_indices, tag_indices, is_train)
 
-        def helper(left, split, right_bound, left_trees=None, left_loss=None):
-            if left == split:
-                label_scores = self.f_label(
-                    self.get_span_encoding(lstm_outputs, left, split))
-                if is_train:
-                    oracle_label, oracle_label_index, crossing = self.get_oracle_label(
-                        gold_tree, left, split)
-                    label_scores = self.augment(
-                        label_scores, oracle_label_index, crossing)
-                argmax_label, argmax_label_index = self.predict_label(
-                    label_scores, gold_tree, left, split)
+        state = self.uni_lstm.initial_state()
+        errs = []
 
-                if is_train:
-                    left_loss = (
-                        label_scores[argmax_label_index] -
-                        label_scores[oracle_label_index]
-                        if argmax_label != oracle_label else dy.zeros(1))
-
-                left_label = argmax_label
-                left_trees = self.gen_leaf_tree(left, left_label)
-                left_trees = [left_trees]
-
-            if split == right_bound:
-                return left_trees, left_loss
-
-            parent_right_scores = self.get_right_boundary_scores(
-                lstm_outputs, left, split, right_bound)
+        syntactic_distance = []
+        for w_s, w_t in zip(word_indices[:-1], word_indices[1:-1]):
+            word_embedding = self.word_embeddings[w_s]
+            state = state.add_input(word_embedding)
+            h_t = state.output()
             if is_train:
-                oracle_rights = gold_tree.parent_rights(
-                    left, split, right_bound)
-                oracle_right = max(oracle_rights)
-                oracle_right_index = oracle_right - (split + 1)
-                parent_right_scores = self.augment(
-                    parent_right_scores, oracle_right_index)
-            parent_right_scores_np = parent_right_scores.npvalue()
-            argmax_right_index = int(parent_right_scores_np.argmax())
-            argmax_right = argmax_right_index + (split + 1)
+                h_t = dy.dropout(h_t, self.dropout)
+            syn_dis = self.f_syn_dis(h_t).value()
+            syntactic_distance.append(syn_dis.value())
+            scores = self.W * h_t + self.b
+            err = dy.pickneglogsoftmax(scores, int(w_t))
+            errs.append(err)
 
-            right = argmax_right
-
-            label_scores = self.f_label(
-                self.get_span_encoding(lstm_outputs, left, right))
-            if is_train:
-                oracle_label, oracle_label_index, crossing = self.get_oracle_label(
-                    gold_tree, left, right)
-                label_scores = self.augment(
-                    label_scores, oracle_label_index, crossing)
-            argmax_label, argmax_label_index = self.predict_label(
-                label_scores, gold_tree, left, right)
-            label = argmax_label
-
-            if is_train:
-                parent_loss = (
-                    parent_right_scores[argmax_right_index] -
-                    parent_right_scores[oracle_right_index]
-                    if argmax_right != oracle_right else dy.zeros(1))
-                label_loss = (
-                    label_scores[argmax_label_index] -
-                    label_scores[oracle_label_index]
-                    if argmax_label != oracle_label else dy.zeros(1))
-
-            right_trees, right_loss = helper(
-                split + 1, split + 1, right, None, None)
-
-            childrens = left_trees + right_trees
-            childrens = self.gen_nonleaf_tree(childrens, label)
-
-            tree, loss = helper(left, right, right_bound, childrens, (
-                parent_loss + label_loss + left_loss + right_loss) if is_train else None)
-
-            return tree, loss
-
-        childrens, loss = helper(0, 0, len(sentence) - 1, None, None)
-        assert len(childrens) == 1
-        tree = childrens[0]
-        tree.propagate_sentence(sentence)
-
+        span_set = self.gen_tree_syn_dis(
+            syntactic_distance[1:], 0, len(word_indices) - 3)
+        sum_errs = dy.esum(errs)
         if is_train:
-            return loss, tree, 1
+            return sum_errs, None, 1
         else:
-            return tree
+            return [sum_errs, span_set]
