@@ -1,4 +1,10 @@
+from collections import defaultdict
+from lib import *
+
+
 class PhraseTree(object):
+    puncs = [",", ".", ":", "``", "''", "PU"]
+
     def __init__(
         self,
         symbol=None,
@@ -57,7 +63,7 @@ class PhraseTree(object):
                     index = rpos
                 else:
                     rpos = line.find(')', index)
-                    word = line[index:rpos]
+                    word = line[index:rpos].lower()
                     sentence.append((word, symbol))
                     leaf = len(sentence) - 1
                     index = rpos
@@ -101,6 +107,57 @@ class PhraseTree(object):
             else:
                 self._right_span = self.children[-1].right_span()
             return self._right_span
+
+    def brackets(self, advp_prt=True, counts=None):
+
+        if counts is None:
+            counts = defaultdict(int)
+
+        if self.leaf is not None:
+            return {}
+
+        nonterm = self.symbol
+        if advp_prt and nonterm == 'PRT':
+            nonterm = 'ADVP'
+
+        left = self.left_span()
+        right = self.right_span()
+
+        # ignore punctuation
+        while (
+            left < len(self.sentence) and
+            self.sentence[left][1] in PhraseTree.puncs
+        ):
+            left += 1
+        while (
+            right > 0 and self.sentence[right][1] in PhraseTree.puncs
+        ):
+            right -= 1
+
+        if left <= right and nonterm != 'TOP':
+            counts[(nonterm, left, right)] += 1
+
+        for child in self.children:
+            child.brackets(advp_prt=advp_prt, counts=counts)
+
+        return counts
+
+    def compare(self, gold, advp_prt=True):
+        """
+        returns (Precision, Recall, F-measure)
+        """
+        predbracks = self.brackets(advp_prt)
+        goldbracks = gold.brackets(advp_prt)
+
+        correct = 0
+        for gb in goldbracks:
+            if gb in predbracks:
+                correct += min(goldbracks[gb], predbracks[gb])
+
+        pred_total = sum(predbracks.values())
+        gold_total = sum(goldbracks.values())
+
+        return FScore(correct, pred_total, gold_total)
 
     @staticmethod
     def load_treefile(fname):

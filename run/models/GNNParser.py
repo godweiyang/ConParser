@@ -216,10 +216,16 @@ class GNNParser2(BaseParser):
             (2 * self.lstm_dim, 2 * self.lstm_dim))
         self.W_r = self.model.add_parameters(
             (2 * self.lstm_dim, 2 * self.lstm_dim))
+        self.f_label = Feedforward(
+            self.model, 4 * self.lstm_dim, [self.fc_hidden_dim], self.label_out)
 
     def eisner_parser(self, n, scores):
-
         INF = np.inf
+        for i in range(0, n - 1):
+            for j in range(i, n):
+                scores[i][j] = -INF
+        for j in range(1, n):
+            scores[n - 1][j] = -INF
 
         comp_rh = np.empty((n, n), dtype=np.float)  # C[i][j][←][0]
         comp_lh = np.empty((n, n), dtype=np.float)  # C[i][j][→][0]
@@ -326,8 +332,10 @@ class GNNParser2(BaseParser):
         return heads
 
     def get_span_encoding(self, H, l, r):
-        # return self.W_l * H[l] + self.W_r * H[r + 1]
-        return H[l] + H[r + 1]
+        # span_encoding = dy.concatenate([self.W_l * H[l], self.W_r * H[r + 1]])
+        span_encoding = dy.concatenate([H[l], H[r + 1]])
+
+        return span_encoding
 
     def get_label_loss(self, H, gold_tree, heads, l, r):
         label_scores = self.f_label(
@@ -338,7 +346,6 @@ class GNNParser2(BaseParser):
         if l + 1 == r:
             return losses
         for k in range(r - 1, l, -1):
-            # if heads[k] == l:
             if heads[k] <= l:
                 losses += self.get_label_loss(H, gold_tree, heads, l, k)
                 losses += self.get_label_loss(H, gold_tree, heads, k, r)
@@ -355,7 +362,6 @@ class GNNParser2(BaseParser):
             tree = self.gen_leaf_tree(l, argmax_label)
             return [tree]
         for k in range(r - 1, l, -1):
-            # if heads[k] == l:
             if heads[k] <= l:
                 left_tree = self.gen_tree_by_heads(
                     H, gold_tree, heads, l, k)
@@ -383,8 +389,6 @@ class GNNParser2(BaseParser):
         tag_indices = data['t']
         gold_tree = data['tree']
         heads = data['heads']
-        # print(gold_tree)
-        # print(heads)
         sentence = gold_tree.sentence
 
         embeddings = self.get_embeddings(word_indices, tag_indices, is_train)
@@ -392,69 +396,75 @@ class GNNParser2(BaseParser):
 
         node_representations = []
         for i in range(len(lstm_outputs) - 1):
-            forward = lstm_outputs[i + 1][:self.lstm_dim] - \
-                lstm_outputs[i][:self.lstm_dim]
-            backward = lstm_outputs[i][self.lstm_dim:] - \
-                lstm_outputs[i + 1][self.lstm_dim:]
-            node_representations.append(dy.concatenate([forward, backward]))
+            node_representations.append(dy.concatenate(
+                [lstm_outputs[i][:self.lstm_dim], lstm_outputs[i + 1][self.lstm_dim:]]))
         assert len(node_representations) == len(sentence) + 1
 
-        mask_np = np.zeros((len(sentence) + 1, len(sentence) + 1))
-        for i in range(len(sentence)):
-            for j in range(i, len(sentence) + 1):
-                mask_np[i][j] = 99999
-        for j in range(1, len(sentence) + 1):
-            mask_np[len(sentence)][j] = 99999
-
-        mask = dy.inputTensor(mask_np)
-
-        # (n, d)
         H0 = dy.transpose(dy.concatenate(node_representations, d=1))
-        # print(H.dim(), self.b2.dim())
+        # if is_train:
+        #     H0 = dy.dropout_dim(H0, 1, 0.1)
+
+        # Att1 = dy.softmax(H0 * self.W_H * dy.transpose(H0), d=1)
+
         Att1 = dy.softmax(H0 * self.W_H * dy.transpose(H0) + H0 *
-                          self.b1 + dy.transpose(H0 * self.b2) - mask, d=1)
-        H1 = leaky_relu(Att1 * H0 * self.W_A + H0 * self.B)
+                          self.b1 + dy.transpose(H0 * self.b2), d=1)
+        # H1 = leaky_relu(Att1 * H0 * self.W_A + H0 * self.B)
+        # if is_train:
+        #     H1 = dy.dropout_dim(H1, 1, 0.1)
 
-        Att2 = dy.softmax(H1 * self.W_H * dy.transpose(H1) + H1 *
-                          self.b1 + dy.transpose(H1 * self.b2) - mask, d=1)
+        # Att2 = dy.softmax(H1 * self.W_H * dy.transpose(H1) + H1 *
+        #                   self.b1 + dy.transpose(H1 * self.b2), d=1)
+        # H2 = leaky_relu(Att2 * H1 * self.W_A + H1 * self.B)
+        # if is_train:
+        #     H2 = dy.dropout_dim(H2, 1, 0.1)
 
-        # print(Att.value())
-        # print(Att[0].dim()[0][0], len(heads))
-        assert Att2[0].dim()[0][0] == len(heads)
+        # Att3 = dy.softmax(H2 * self.W_H * dy.transpose(H2) + H2 *
+        #                   self.b1 + dy.transpose(H2 * self.b2), d=1)
 
-        # heads_predicted = self.eisner_parser(len(sentence) + 1, Att2.value())
+        heads_predicted = self.eisner_parser(
+            len(sentence) + 1, Att1.value())
 
-        # heads_predicted = [Att2.value()[i].argmax()
-        #                    for i in range(len(sentence) + 1)]
+        # heads_predicted = [None] * (len(sentence) + 1)
         # heads_predicted[0] = -1
+        # for i in range(1, len(sentence) + 1):
+        #     heads_predicted[i] = Att1.value()[i][:i].argmax()
 
         # heads_predicted = heads
-        # self.check(heads_predicted)
+        self.check(heads_predicted)
 
         if is_train:
             losses = []
             # losses1 = []
+            # losses2 = []
             for i in range(1, len(heads)):
-                losses.append(-dy.log(Att2[i][heads[i]]))
+                losses.append(-dy.log(Att1[i][heads[i]]))
                 # losses1.append(-dy.log(Att1[i][heads[i]]))
+                # losses2.append(-dy.log(Att2[i][heads[i]]))
 
-            # losses += self.get_label_loss_by_tree(H1, gold_tree)
-            losses += self.get_label_loss(H1,
-                                          gold_tree, heads, 0, len(sentence))
-            # losses += self.get_label_loss(H1, gold_tree,
-            #                               heads_predicted, 0, len(sentence))
+            losses += self.get_label_loss(H0,
+                                          gold_tree, heads_predicted, 0, len(sentence))
 
-            # loss = dy.esum(losses) + 0.5 * dy.esum(losses1)
+            # loss = dy.esum(losses) + 0.5 * dy.esum(losses1 + losses2)
             loss = dy.esum(losses)
 
             return loss, None, 1
         else:
-            heads_predicted = self.eisner_parser(
-                len(sentence) + 1, Att2.value())
-            self.check(heads_predicted)
+            # heads_predicted = self.eisner_parser(
+            #     len(sentence) + 1, dy.log(Att1).value())
+            # self.check(heads_predicted)
+
+            # heads_predicted = [None] * (len(sentence) + 1)
+            # heads_predicted[0] = -1
+            # for i in range(1, len(sentence) + 1):
+            #     heads_predicted[i] = Att1.value()[i][:i].argmax()
+
+            # self.check(heads_predicted)
+
+            # heads_predicted = heads
 
             childrens = self.gen_tree_by_heads(
-                H1, gold_tree, heads_predicted, 0, len(sentence))
+                H0, gold_tree, heads_predicted, 0, len(sentence))
+
             tree = childrens[0]
             tree.propagate_sentence(sentence)
             return tree

@@ -36,6 +36,18 @@ class Configurable(object):
     def test_file(self):
         return self._config.get('Data', 'test_file')
 
+    @property
+    def train_bert_file(self):
+        return self._config.get('Data', 'train_bert_file')
+
+    @property
+    def dev_bert_file(self):
+        return self._config.get('Data', 'dev_bert_file')
+
+    @property
+    def test_bert_file(self):
+        return self._config.get('Data', 'test_bert_file')
+
     # Save
     @property
     def save_dir(self):

@@ -2,6 +2,8 @@ import sys
 import json
 from collections import defaultdict, OrderedDict
 
+import numpy as np
+
 from .trees import PhraseTree
 from .state import State
 
@@ -171,7 +173,7 @@ class Vocabulary(object):
 
         self.get_heads(tree.children[-1], True)
 
-    def gold_data(self, goldtree):
+    def gold_data(self, goldtree, idx):
         w, t = self.sentence_sequences(goldtree.sentence)
 
         (s_features, l_features) = State.training_data(goldtree)
@@ -190,6 +192,7 @@ class Vocabulary(object):
         self.get_heads(goldtree)
 
         return {
+            'idx': idx,
             'tree': goldtree,
             'w': w,
             't': t,
@@ -201,7 +204,16 @@ class Vocabulary(object):
     def gold_data_from_file(self, fname):
         trees = PhraseTree.load_treefile(fname)
         result = []
-        for tree in trees:
-            sentence_data = self.gold_data(tree)
+        for idx, tree in enumerate(trees):
+            sentence_data = self.gold_data(tree, idx)
             result.append(sentence_data)
         return result
+
+    def load_bert_embeddings(self, fname):
+        sent_emb_np = []
+        with open(fname) as fin:
+            for line in fin:
+                sent_emb = eval(line)
+                sent_emb_np.append(np.array(sent_emb, dtype=np.float32))
+
+        return sent_emb_np

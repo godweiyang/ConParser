@@ -40,7 +40,7 @@ class BaseParser(object):
 
         self.lstm = dy.BiRNNBuilder(
             self.lstm_layers,
-            self.tag_embedding_dim + 2 * self.char_lstm_dim + self.word_embedding_dim,
+            self.tag_embedding_dim + 2 * self.char_lstm_dim + self.word_embedding_dim + 768,
             2 * self.lstm_dim,
             self.model,
             dy.VanillaLSTMBuilder)
@@ -123,14 +123,14 @@ class BaseParser(object):
         increment[oracle_index] = crossing
         return scores + dy.inputVector(increment)
 
-    def get_embeddings(self, word_inds, tag_inds, is_train=False):
+    def get_embeddings(self, word_inds, tag_inds, is_train=False, train_bert_embedding=None):
         if is_train:
             self.char_lstm.set_dropout(self.dropout)
         else:
             self.char_lstm.disable_dropout()
 
         embeddings = []
-        for w, t in zip(word_inds, tag_inds):
+        for idx, (w, t) in enumerate(zip(word_inds, tag_inds)):
             if w > 2:
                 count = self.vocab.word_freq_list[w]
                 if not count or (is_train and np.random.rand() < self.unk_param / (self.unk_param + count)):
@@ -145,8 +145,13 @@ class BaseParser(object):
                 char_lstm_outputs[-1][:self.char_lstm_dim],
                 char_lstm_outputs[0][self.char_lstm_dim:]])
             word_embedding = self.word_embeddings[w]
-            embeddings.append(dy.concatenate([
-                tag_embedding, char_embedding, word_embedding]))
+            embs = [tag_embedding, char_embedding, word_embedding]
+            if train_bert_embedding is not None:
+                if w != 0:
+                    embs.append(dy.inputTensor(train_bert_embedding[idx]))
+                else:
+                    embs.append(dy.zeros(768))
+            embeddings.append(dy.concatenate(embs))
 
         return embeddings
 

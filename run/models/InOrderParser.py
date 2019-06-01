@@ -19,7 +19,7 @@ class InOrderParser(BaseParser):
         super().__init__(model, *parameters)
         self.spec = {'parameters': parameters}
 
-    def parse(self, data, is_train=False):
+    def parse(self, data, is_train=False, train_bert_embedding=None):
         if is_train:
             self.lstm.set_dropout(self.dropout)
         else:
@@ -30,7 +30,7 @@ class InOrderParser(BaseParser):
         gold_tree = data['tree']
         sentence = gold_tree.sentence
 
-        embeddings = self.get_embeddings(word_indices, tag_indices, is_train)
+        embeddings = self.get_embeddings(word_indices, tag_indices, is_train, train_bert_embedding)
         lstm_outputs = self.lstm.transduce(embeddings)
 
         def helper(left, split, right_bound, left_trees=None, left_loss=None):
@@ -133,7 +133,7 @@ class InOrderParser1(BaseParser):
         self.f_label = Feedforward(
             self.model, 3 * self.lstm_dim, [self.fc_hidden_dim], self.label_out)
 
-    def parse(self, data, is_train=False):
+    def parse(self, data, is_train=False, train_bert_embedding=None):
         if is_train:
             self.lstm.set_dropout(self.dropout)
         else:
@@ -144,7 +144,7 @@ class InOrderParser1(BaseParser):
         gold_tree = data['tree']
         sentence = gold_tree.sentence
 
-        embeddings = self.get_embeddings(word_indices, tag_indices, is_train)
+        embeddings = self.get_embeddings(word_indices, tag_indices, is_train, train_bert_embedding)
         lstm_outputs = self.lstm.transduce(embeddings)
 
         def helper(left, split, right_bound, child_state, left_trees=None, left_loss=None):
@@ -259,7 +259,7 @@ class InOrderParser2(BaseParser):
         self.f_label = Feedforward(
             self.model, 3 * self.lstm_dim, [self.fc_hidden_dim], self.label_out)
 
-    def parse(self, data, is_train=False):
+    def parse(self, data, is_train=False, train_bert_embedding=None):
         if is_train:
             self.lstm.set_dropout(self.dropout)
         else:
@@ -270,7 +270,7 @@ class InOrderParser2(BaseParser):
         gold_tree = data['tree']
         sentence = gold_tree.sentence
 
-        embeddings = self.get_embeddings(word_indices, tag_indices, is_train)
+        embeddings = self.get_embeddings(word_indices, tag_indices, is_train, train_bert_embedding)
         lstm_outputs = self.lstm.transduce(embeddings)
 
         def helper(left, split, right_bound, child_state, left_trees=None, left_loss=None):
