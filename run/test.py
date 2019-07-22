@@ -42,8 +42,8 @@ def test(parser,
 if __name__ == '__main__':
     argparser = argparse.ArgumentParser()
     argparser.add_argument('--config_file',
-                           default='configs/InOrderParser.cfg')
-    argparser.add_argument('--model', default='InOrderParser')
+                           default='configs/ChartParser.cfg')
+    argparser.add_argument('--model', default='ChartParser')
     argparser.add_argument('--dev_fscore', required=True)
     argparser.add_argument('--unsupervised', action="store_true")
     argparser.add_argument('--use_bert', action="store_true")

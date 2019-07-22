@@ -5,35 +5,35 @@ import time
 import os
 import itertools
 import random
-random.seed(666)
 
 import numpy as np
-np.random.seed(666)
-import _dynet as dy
-dyparams = dy.DynetParams()
-# dyparams.from_args()
-dyparams.set_autobatch(True)
-dyparams.set_random_seed(666)
-dyparams.set_mem(5120)
-dyparams.init()
+import torch
+import torch.optim.lr_scheduler
 
 import models
 from lib import *
 from test import *
 
 if __name__ == "__main__":
+    # load the config parameters
     argparser = argparse.ArgumentParser()
     argparser.add_argument('--config_file',
-                           default='configs/InOrderParser.cfg')
-    argparser.add_argument('--model', default='InOrderParser')
+                           default='configs/ChartParser.cfg')
+    argparser.add_argument('--model', default='ChartParser')
     argparser.add_argument('--unsupervised', action="store_true")
     argparser.add_argument('--train_more', action="store_true")
+    argparser.add_argument('--use_elmo', action="store_true")
     argparser.add_argument('--use_bert', action="store_true")
     argparser.add_argument('--more_epochs', type=int, default=20)
     args, extra_args = argparser.parse_known_args()
     args.config_file = "configs/{}.cfg".format(
         args.model[:args.model.find('Parser') + 6])
     config = Configurable(args.config_file, extra_args)
+
+    # set the seeds
+    random.seed(config.random_seed)
+    np.random.seed(config.numpy_seed)
+    torch.manual_seed(config.torch_seed)
 
     vocab = Vocabulary(config.train_file)
     training_data = vocab.gold_data_from_file(config.train_file)
@@ -46,11 +46,6 @@ if __name__ == "__main__":
             config.train_bert_file)
         dev_bert_embeddings = vocab.load_bert_embeddings(config.dev_bert_file)
         print('Loaded bert embeddings!')
-
-    model = dy.ParameterCollection()
-    # trainer = dy.AdadeltaTrainer(model, eps=1e-7, rho=0.99)
-    trainer = dy.AdamTrainer(model, beta_2=0.9, eps=1e-4)
-    # trainer.set_sparse_updates(False)
 
     if args.train_more:
         model_path = config.load_model_path + \
@@ -66,7 +61,39 @@ if __name__ == "__main__":
             config.fc_hidden_dim, config.dropout, config.unk_param
         ]
         Parser = getattr(models, args.model)
-        parser = Parser(model, parameters)
+        parser = Parser(parameters)
+
+    print("Initializing optimizer...")
+    trainable_parameters = [
+        param for param in parser.parameters() if param.requires_grad
+    ]
+    trainer = torch.optim.Adam(trainable_parameters,
+                               lr=1.,
+                               betas=(0.9, 0.98),
+                               eps=1e-9)
+
+    def set_lr(new_lr):
+        for param_group in trainer.param_groups:
+            param_group['lr'] = new_lr
+
+    assert config.step_decay, "Only step_decay schedule is supported"
+
+    warmup_coeff = config.learning_rate / config.learning_rate_warmup_steps
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        trainer,
+        'max',
+        factor=config.step_decay_factor,
+        patience=config.step_decay_patience,
+        verbose=True,
+    )
+
+    def schedule_lr(iteration):
+        iteration = iteration + 1
+        if iteration <= config.learning_rate_warmup_steps:
+            set_lr(iteration * warmup_coeff)
+
+    clippable_parameters = trainable_parameters
+    grad_clip_threshold = np.inf if config.clip_grad_norm == 0 else config.clip_grad_norm
 
     current_processed = 0
     check_every = len(training_data) / config.checks_per_epoch
@@ -99,15 +126,19 @@ if __name__ == "__main__":
 
         for start_index in range(0, len(training_data), config.batch_size):
             batch_losses = []
-            dy.renew_cg()
+            trainer.zero_grad()
+            schedule_lr(current_processed // config.batch_size)
+            parser.train()
 
-            for data in training_data[start_index:start_index +
-                                      config.batch_size]:
+            batch_data = training_data[start_index:start_index +
+                                       config.batch_size]
+
+            for data in split_batch(batch_data, config.subbatch_max_tokens):
                 if args.use_bert:
-                    loss, _, loss_counts = parser.parse(
+                    loss, _, loss_counts = parser.parse_batch(
                         data, True, train_bert_embeddings[data['idx']])
                 else:
-                    loss, _, loss_counts = parser.parse(data, True)
+                    loss, _, loss_counts = parser.parse_batch(data, True)
                 batch_losses.append(loss)
                 current_processed += 1
                 total_loss_count += loss_counts

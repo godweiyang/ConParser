@@ -71,57 +71,45 @@ class Configurable(object):
 
     # Network
     @property
-    def word_embedding_dim(self):
-        return self._config.getint('Network', 'word_embedding_dim')
+    
+
+    # Optimizer
+    @property
+    def clip_grad_norm(self):
+        return self._config.getint('Optimizer', 'clip_grad_norm')
 
     @property
-    def tag_embedding_dim(self):
-        return self._config.getint('Network', 'tag_embedding_dim')
+    def learning_rate(self):
+        return self._config.getfloat('Optimizer', 'learning_rate')
 
     @property
-    def char_embedding_dim(self):
-        return self._config.getint('Network', 'char_embedding_dim')
+    def learning_rate_warmup_steps(self):
+        return self._config.getint('Optimizer', 'learning_rate_warmup_steps')
 
     @property
-    def label_embedding_dim(self):
-        return self._config.getint('Network', 'label_embedding_dim')
+    def step_decay(self):
+        return self._config.getboolean('Optimizer', 'step_decay')
 
     @property
-    def pos_embedding_dim(self):
-        return self._config.getint('Network', 'pos_embedding_dim')
+    def step_decay_factor(self):
+        return self._config.getfloat('Optimizer', 'step_decay_factor')
 
     @property
-    def char_lstm_layers(self):
-        return self._config.getint('Network', 'char_lstm_layers')
-
-    @property
-    def char_lstm_dim(self):
-        return self._config.getint('Network', 'char_lstm_dim')
-
-    @property
-    def lstm_layers(self):
-        return self._config.getint('Network', 'lstm_layers')
-
-    @property
-    def lstm_dim(self):
-        return self._config.getint('Network', 'lstm_dim')
-
-    @property
-    def fc_hidden_dim(self):
-        return self._config.getint('Network', 'fc_hidden_dim')
-
-    @property
-    def dropout(self):
-        return self._config.getfloat('Network', 'dropout')
-
-    @property
-    def unk_param(self):
-        return self._config.getfloat('Network', 'unk_param')
+    def step_decay_patience(self):
+        return self._config.getint('Optimizer', 'step_decay_patience')
 
     # Run
     @property
+    def random_seed(self):
+        return self._config.getint('Run', 'random_seed')
+
+    @property
     def numpy_seed(self):
         return self._config.getint('Run', 'numpy_seed')
+
+    @property
+    def torch_seed(self):
+        return self._config.getint('Run', 'torch_seed')
 
     @property
     def batch_size(self):
@@ -134,3 +122,7 @@ class Configurable(object):
     @property
     def checks_per_epoch(self):
         return self._config.getint('Run', 'checks_per_epoch')
+
+    @property
+    def subbatch_max_tokens(self):
+        return self._config.getint('Run', 'subbatch_max_tokens')
